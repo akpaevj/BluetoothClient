@@ -1,0 +1,13 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="16.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <CustomBuild Include="C:\Users\akpaev.e.ENTERPRISE\Desktop\BluetoothClient\build\CMakeFiles\5a32121e73fd335eff8a30ef789ef179\generate.stamp.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="CMake Rules">
+      <UniqueIdentifier>{43A5900D-355F-34FC-BE61-1273E469E58A}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>

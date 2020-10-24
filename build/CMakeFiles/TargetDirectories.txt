@@ -1,0 +1,3 @@
+C:/Users/akpaev.e.ENTERPRISE/Desktop/BluetoothClient/build/CMakeFiles/BluetoothClient.dir
+C:/Users/akpaev.e.ENTERPRISE/Desktop/BluetoothClient/build/CMakeFiles/ALL_BUILD.dir
+C:/Users/akpaev.e.ENTERPRISE/Desktop/BluetoothClient/build/CMakeFiles/ZERO_CHECK.dir
