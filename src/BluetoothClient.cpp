@@ -11,6 +11,10 @@ std::string BluetoothClient::extensionName() {
 }
 
 BluetoothClient::BluetoothClient(){
+    timeoutProperty = make_shared<variant_t>(0);
+
+    AddProperty(L"Timeout", L"Таймаут", timeoutProperty);
+
     AddProperty(L"Version", L"ВерсияКомпоненты", [&]() {
         auto s = std::string(Version);
         return std::make_shared<variant_t>(std::move(s));
@@ -44,6 +48,15 @@ void BluetoothClient::Open(const variant_t deviceName)
     }
 
     localSocket = socket(AF_BTH, SOCK_STREAM, BTHPROTO_RFCOMM);
+
+    auto t_val = get<int>(*timeoutProperty);
+
+    int timeoutValMs = t_val * 1000;
+
+    if (timeoutValMs > 0) {
+        setsockopt(localSocket, SOL_SOCKET, SO_RCVTIMEO, (const char*)&timeoutValMs, sizeof(timeoutValMs));
+        setsockopt(localSocket, SOL_SOCKET, SO_SNDTIMEO, (const char*)&timeoutValMs, sizeof(timeoutValMs));
+    }
 
     if (INVALID_SOCKET == localSocket) {
         auto err = GetWsaErrorMessage();

@@ -36,5 +36,7 @@ private:
 
 	bool _opened = false;
 
+	shared_ptr<variant_t> timeoutProperty;
+
 	BluetoothClient operator=(const BluetoothClient&) = delete;
 };
