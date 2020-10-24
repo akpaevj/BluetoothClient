@@ -85,8 +85,10 @@ void BluetoothClient::Open(const variant_t deviceName)
 void BluetoothClient::Write(const variant_t message)
 {
     auto msg = get<string>(message) + "\r\n";
+    auto real_msg = msg.c_str();
+    auto len = strlen(real_msg);
 
-    if (SOCKET_ERROR == send(localSocket, msg.c_str(), msg.length(), 0)) {
+    if (SOCKET_ERROR == send(localSocket, real_msg, len, 0)) {
         AddError(ADDIN_E_FAIL, extensionName(), GetWsaErrorMessage(), true);
     }
 }
@@ -95,18 +97,26 @@ variant_t BluetoothClient::Read()
 {
     string message = "";
 
-    const int buffer_length = 1024;
+    const int buffer_length = 4096;
     char buffer[buffer_length];
 
     int len;
 
-    len = recv(localSocket, buffer, buffer_length, 0);
+    while (true) {
+        len = recv(localSocket, buffer, buffer_length, 0);
 
-    if (len == SOCKET_ERROR) {
-        AddError(ADDIN_E_FAIL, extensionName(), GetWsaErrorMessage(), true);
-    }
-    else {
-        message.append(buffer, len);
+        if (len == SOCKET_ERROR) {
+            AddError(ADDIN_E_FAIL, extensionName(), GetWsaErrorMessage(), true);
+            break;
+        }
+        else if (len == 0)
+            break;
+        else
+            message.append(buffer, len);
+
+        // avoid recv block
+        if (len < buffer_length)
+            break;
     }
 
     return message;
