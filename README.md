@@ -1,3 +1,5 @@
+![Desktop CI](https://github.com/akpaevj/BluetoothClient/workflows/Desktop%20CI/badge.svg)
+
 # BluetoothClient
 Компонента предоставляет методы для синхронного обмена строковыми данными с устройствами Bluetooth (RFCOMM)
 ### Свойства внешней компоненты:
