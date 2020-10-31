@@ -1,10 +1,14 @@
 #include "BluetoothClient.h"
 #include <locale>
 #include <codecvt>
+#include <algorithm>
+#include <regex>
+#include "json.hpp"
 
 #pragma comment(lib, "Ws2_32.lib")
 
-using namespace std;
+using namespace std; 
+using json = nlohmann::json;
 
 std::string BluetoothClient::extensionName() {
     return "BluetoothClient";
@@ -23,7 +27,7 @@ BluetoothClient::BluetoothClient(){
     AddMethod(L"Open", L"Открыть", this, &BluetoothClient::Open);
     AddMethod(L"Write", L"Записать", this, &BluetoothClient::Write);
     AddMethod(L"Opened", L"Открыто", this, &BluetoothClient::Opened);
-    AddMethod(L"Read", L"Прочитать", this, &BluetoothClient::Read);
+    AddMethod(L"Read", L"Прочитать", this, &BluetoothClient::Read, {{0, false}});
     AddMethod(L"Close", L"Закрыть", this, &BluetoothClient::Close);
 }
 
@@ -86,24 +90,21 @@ void BluetoothClient::Write(const variant_t message)
 {
     auto msg = get<string>(message) + "\r\n";
     auto real_msg = msg.c_str();
-    auto len = strlen(real_msg);
 
-    if (SOCKET_ERROR == send(localSocket, real_msg, len, 0)) {
+    if (SOCKET_ERROR == send(localSocket, real_msg, strlen(real_msg) * sizeof(char), 0)) {
         AddError(ADDIN_E_FAIL, extensionName(), GetWsaErrorMessage(), true);
     }
 }
 
-variant_t BluetoothClient::Read()
+variant_t BluetoothClient::Read(const variant_t hasEndToken)
 {
+    bool hasEnd = get<bool>(hasEndToken);
     string message = "";
-
-    const int buffer_length = 4096;
-    char buffer[buffer_length];
-
-    int len;
+    const int bufferLength = 4096;
+    char buffer[bufferLength];
 
     while (true) {
-        len = recv(localSocket, buffer, buffer_length, 0);
+        int len = recv(localSocket, buffer, sizeof(buffer), 0);
 
         if (len == SOCKET_ERROR) {
             AddError(ADDIN_E_FAIL, extensionName(), GetWsaErrorMessage(), true);
@@ -111,11 +112,13 @@ variant_t BluetoothClient::Read()
         }
         else if (len == 0)
             break;
-        else
-            message.append(buffer, len);
 
-        // avoid recv block
-        if (len < buffer_length)
+        message.append(buffer, buffer + len);
+
+        if (hasEnd && CompletedMessage(message))
+            break;
+
+        if (!hasEnd && TryParseJson(message))
             break;
     }
 
@@ -308,7 +311,30 @@ string BluetoothClient::GetWsaErrorMessage()
     return ss;
 }
 
-variant_t BluetoothClient::Opened() {
+bool BluetoothClient::CompletedMessage(string message)
+{
+    regex endRegex(R"(\{\s*"type"\s*:\s*"END"\s*,\s*"command"\s*:\s*".*?"\s*\})", regex_constants::icase);
+
+    // This is a completed message
+    if (regex_search(message, endRegex))
+       return true;
+
+    return false;
+}
+
+bool BluetoothClient::TryParseJson(string message) 
+{
+    try {
+        auto j = json::parse(message);
+        return true;
+    }
+    catch (...) {
+        return false;
+    }
+}
+
+variant_t BluetoothClient::Opened() 
+{
     return _opened;
 }
 
