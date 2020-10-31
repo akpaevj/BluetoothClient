@@ -1,6 +1,6 @@
 ![Desktop CI](https://github.com/akpaevj/BluetoothClient/workflows/Desktop%20CI/badge.svg)
 
-# BluetoothClient
+# BluetoothClient (заказ http://erpsoft.az/)
 Компонента предоставляет методы для синхронного обмена данными с устройствами Bluetooth (RFCOMM)
 ### Свойства внешней компоненты:
 Версия (Version) - строка, содержит текущую версию используемой компоненты.
