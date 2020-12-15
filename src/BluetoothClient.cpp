@@ -31,6 +31,10 @@ BluetoothClient::BluetoothClient(){
     AddMethod(L"Close", L"Закрыть", this, &BluetoothClient::Close);
 }
 
+BluetoothClient::~BluetoothClient() {
+    Close();
+}
+
 void BluetoothClient::Open(const variant_t deviceName)
 {
 	WSADATA wsaData;

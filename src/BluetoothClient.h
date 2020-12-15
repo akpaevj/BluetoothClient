@@ -18,8 +18,9 @@ DEFINE_GUID(g_insecureBluetoothClientChat, 0x8ce255c0, 0x200a, 0x11e0, 0xac, 0x6
 class BluetoothClient final : public Component
 {
 public:
-	const char *Version = u8"1.0.0";
+	const char *Version = u8"1.0.1";
 	BluetoothClient();
+	~BluetoothClient();
 private:
 	std::string extensionName() override;
 	void Open(const variant_t deviceName);
