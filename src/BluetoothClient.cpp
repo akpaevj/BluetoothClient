@@ -139,7 +139,7 @@ variant_t BluetoothClient::Read()
 {
     if (!_opened) {
         AddError(ADDIN_E_VERY_IMPORTANT, extensionName(), "You should open a connection before reading any data", true);
-        return;
+        return "";
     }
 
     string message = "";
