@@ -37,6 +37,11 @@ BluetoothClient::~BluetoothClient() {
 
 void BluetoothClient::Open(const variant_t deviceName)
 {
+    if (_opened) {
+        AddError(ADDIN_E_VERY_IMPORTANT, extensionName(), "Connection is already opened", true);
+        return;
+    }
+
 	WSADATA wsaData;
 
     auto sdeviceName = get<string>(deviceName);
@@ -95,6 +100,11 @@ void BluetoothClient::Open(const variant_t deviceName)
 
 void BluetoothClient::Write(const variant_t message)
 {
+    if (!_opened) {
+        AddError(ADDIN_E_VERY_IMPORTANT, extensionName(), "You should open a connection before writing any data", true);
+        return;
+    }
+
     auto msg = get<string>(message);
     
     msg.push_back(ETX);
@@ -127,6 +137,11 @@ void BluetoothClient::SendAck() {
 
 variant_t BluetoothClient::Read()
 {
+    if (!_opened) {
+        AddError(ADDIN_E_VERY_IMPORTANT, extensionName(), "You should open a connection before reading any data", true);
+        return;
+    }
+
     string message = "";
     const int bLength = 1000;
     char buffer[bLength];
@@ -421,8 +436,7 @@ variant_t BluetoothClient::Opened()
 
 void BluetoothClient::Close()
 {
-    if (localSocket != INVALID_SOCKET) {
-
+    if (localSocket != INVALID_SOCKET && _opened) {
         if (SOCKET_ERROR == closesocket(localSocket)) {
             auto err = GetWsaErrorMessage();
             WSACleanup();
