@@ -2,21 +2,18 @@
 #include <locale>
 #include <codecvt>
 #include <algorithm>
-#include <regex>
-#include "json.hpp"
 
 #pragma comment(lib, "Ws2_32.lib")
 
-using namespace std; 
-using json = nlohmann::json;
+using namespace std;
 
 std::string BluetoothClient::extensionName() {
     return "BluetoothClient";
 }
 
 BluetoothClient::BluetoothClient(){
-    timeoutProperty = make_shared<variant_t>(0);
 
+    timeoutProperty = make_shared<variant_t>(0);
     AddProperty(L"Timeout", L"Таймаут", timeoutProperty);
 
     AddProperty(L"Version", L"ВерсияКомпоненты", [&]() {
@@ -24,10 +21,13 @@ BluetoothClient::BluetoothClient(){
         return std::make_shared<variant_t>(std::move(s));
     });
 
+    debugMode = make_shared<variant_t>(false);
+    AddProperty(L"DebugMode", L"РежимОтладки", debugMode);
+
     AddMethod(L"Open", L"Открыть", this, &BluetoothClient::Open);
     AddMethod(L"Write", L"Записать", this, &BluetoothClient::Write);
     AddMethod(L"Opened", L"Открыто", this, &BluetoothClient::Opened);
-    AddMethod(L"Read", L"Прочитать", this, &BluetoothClient::Read, {{0, false}});
+    AddMethod(L"Read", L"Прочитать", this, &BluetoothClient::Read);
     AddMethod(L"Close", L"Закрыть", this, &BluetoothClient::Close);
 }
 
@@ -40,6 +40,8 @@ void BluetoothClient::Open(const variant_t deviceName)
 	WSADATA wsaData;
 
     auto sdeviceName = get<string>(deviceName);
+    AddDebugMessage("INFO: Starting connection to the device named \"" + sdeviceName + "\"");
+
     wstring wdeviceName(sdeviceName.begin(), sdeviceName.end());
 
     SOCKADDR_BTH RemoteBthAddr = { 0 };
@@ -58,6 +60,7 @@ void BluetoothClient::Open(const variant_t deviceName)
     localSocket = socket(AF_BTH, SOCK_STREAM, BTHPROTO_RFCOMM);
 
     auto t_val = get<int>(*timeoutProperty);
+    AddDebugMessage("INFO: Timeout is " + to_string(t_val));
 
     int timeoutValMs = t_val * 1000;
 
@@ -92,24 +95,54 @@ void BluetoothClient::Open(const variant_t deviceName)
 
 void BluetoothClient::Write(const variant_t message)
 {
-    auto msg = get<string>(message) + "\r\n";
-    auto real_msg = msg.c_str();
+    auto msg = get<string>(message);
+    
+    msg.push_back(ETX);
+    auto lrc = CalculateLrc(msg);
+    msg.insert(0, 1, STX);
+    msg += lrc;
 
-    if (SOCKET_ERROR == send(localSocket, real_msg, strlen(real_msg) * sizeof(char), 0)) {
+    auto data = msg.c_str();
+
+    if (SOCKET_ERROR == send(localSocket, data, msg.length(), 0)) {
         AddError(ADDIN_E_FAIL, extensionName(), GetWsaErrorMessage(), true);
     }
 }
 
-variant_t BluetoothClient::Read(const variant_t hasEndToken)
+void BluetoothClient::SendNak() {
+    char symb[] = { NAK };
+
+    if (SOCKET_ERROR == send(localSocket, symb, 1, 0)) {
+        AddError(ADDIN_E_FAIL, extensionName(), GetWsaErrorMessage(), true);
+    }
+}
+
+void BluetoothClient::SendAck() {
+    char symb[] = { ACK };
+
+    if (SOCKET_ERROR == send(localSocket, symb, 1, 0)) {
+        AddError(ADDIN_E_FAIL, extensionName(), GetWsaErrorMessage(), true);
+    }
+}
+
+variant_t BluetoothClient::Read()
 {
-    bool hasEnd = get<bool>(hasEndToken);
     string message = "";
-    const int bufferLength = 4096;
-    char buffer[bufferLength];
+    const int bLength = 1000;
+    char buffer[bLength];
+    int tries = 0;
+    bool messageStarted = false;
+    char calcLrc = 0;
 
     while (true) {
-        int len = recv(localSocket, buffer, sizeof(buffer), 0);
+        // For avoiding infinite loop stop it after 3 tries
+        if (tries == 3) {
+            AddError(ADDIN_E_FAIL, extensionName(), "Failed to get a message", true);
+            return message;
+        }
 
+        int len = recv(localSocket, buffer, bLength, 0);
+        
         if (len == SOCKET_ERROR) {
             AddError(ADDIN_E_FAIL, extensionName(), GetWsaErrorMessage(), true);
             break;
@@ -117,16 +150,66 @@ variant_t BluetoothClient::Read(const variant_t hasEndToken)
         else if (len == 0)
             break;
 
-        message.append(buffer, buffer + len);
+        AddDebugMessage("INFO: Received " + to_string(len) + " bytes");
 
-        if (hasEnd && CompletedMessage(message))
-            break;
+        // First byte of the message MUST be a STX symbol. If everything is ok, continue reading the stream
+        if (!messageStarted) {
+            if (buffer[0] == STX) {
+                AddDebugMessage("INFO: Received STX symbol");
+                messageStarted = true;
+            }
+            else if (buffer[0] == NAK) {
+                AddError(ADDIN_E_FAIL, extensionName(), "Received NAK symbol, you should send the message again", true);
+                return "";
+            }
+            else {
+                AddError(ADDIN_E_FAIL, extensionName(), "The first byte of the stream is not a STX symbol", true);
+                return message;
+            }
+        }
 
-        if (!hasEnd && TryParseJson(message))
-            break;
+        for (int i = 0; i < len; i++) {
+            auto c = buffer[i];
+
+            // Calculate message checksum and push char to message string
+            if (c != STX) {
+                if (c != ETX)
+                    message.push_back(c);
+
+                calcLrc ^= c;
+            }
+
+            if (c == ETX) {
+                AddDebugMessage("INFO: ETX symbol reached");
+
+                auto receivedLrc = buffer[i + 1];
+                AddDebugMessage("INFO: Received message LRC is " + to_string(receivedLrc));
+                AddDebugMessage("INFO: Calculated message LRC is " + to_string(calcLrc));
+
+                if (receivedLrc == calcLrc) {
+                    AddDebugMessage("INFO: Calculated LRC and received one are the same");
+                    // Send acknowledge and pass message to 1C
+                    SendAck();
+                    AddDebugMessage("INFO: ACK message sent");
+
+                    return message.substr(message.length() - 1);
+                }
+                else {
+                    AddDebugMessage("WARNING: calculated LRC differs from received one. It'll send NAK symbol and read the message again");  
+                    SendNak();
+                    message.clear();
+                    tries++;
+                    messageStarted = false;
+                    calcLrc = 0;
+
+                    break;
+                }
+            }
+        }
     }
 
-    return message;
+    AddError(ADDIN_E_FAIL, extensionName(), "Failed to get a message", true);
+    return "";
 }
 
 ULONG BluetoothClient::NameToBluetoothAddress(const wstring deviceName, PSOCKADDR_BTH pRemoteBtAddr)
@@ -315,25 +398,19 @@ string BluetoothClient::GetWsaErrorMessage()
     return ss;
 }
 
-bool BluetoothClient::CompletedMessage(string message)
-{
-    regex endRegex(R"(\{\s*"type"\s*:\s*"END"\s*,\s*"command"\s*:\s*".*?"\s*\})", regex_constants::icase);
-
-    // This is a completed message
-    if (regex_search(message, endRegex))
-       return true;
-
-    return false;
+char BluetoothClient::CalculateLrc(string message) {
+    char LRC = 0;
+    for (int i = 0; i < message.length(); i++) {
+        LRC ^= message[i];
+    }
+    return LRC;
 }
 
-bool BluetoothClient::TryParseJson(string message) 
-{
-    try {
-        auto j = json::parse(message);
-        return true;
-    }
-    catch (...) {
-        return false;
+void BluetoothClient::AddDebugMessage(string message) {
+    auto write = get<bool>(*debugMode);
+
+    if (write) {
+        AddError(ADDIN_E_INFO, extensionName(), message, false);
     }
 }
 
@@ -358,5 +435,7 @@ void BluetoothClient::Close()
         }
 
         _opened = false;
+
+        AddDebugMessage("INFO: Disconnected");
     }
 }

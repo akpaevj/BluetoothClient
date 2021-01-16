@@ -22,21 +22,33 @@ public:
 	BluetoothClient();
 	~BluetoothClient();
 private:
+	// Control symbols
+	const char SOH = 0x01; // start of heading
+	const char STX = 0x02; // start of text
+	const char ETX = 0x03; // end of text
+	const char EOT = 0x04; // end of transmission
+	const char ENQ = 0x05; // enquiry
+	const char ACK = 0x06; // acknowledge
+	const char CR = 0x0D; // carriage return
+	const char NAK = 0x15; // negative acknowledge
+
 	std::string extensionName() override;
 	void Open(const variant_t deviceName);
 	void Write(const variant_t message);
-	variant_t Read(const variant_t hasEndToken);
+	variant_t Read();
 	variant_t Opened();
 	void Close();
 	SOCKET localSocket = NULL;
 	ULONG NameToBluetoothAddress(const wstring deviceName, PSOCKADDR_BTH pRemoteBtAddr);
 	string GetWsaErrorMessage();
-	bool CompletedMessage(string message);
-	bool TryParseJson(string message);
+	char CalculateLrc(string message);
+	void SendNak();
+	void SendAck();
+	void AddDebugMessage(string message);
 
 	bool _opened = false;
-
 	std::shared_ptr<variant_t> timeoutProperty;
+	std::shared_ptr<variant_t> debugMode;
 
 	BluetoothClient operator=(const BluetoothClient&) = delete;
 };
