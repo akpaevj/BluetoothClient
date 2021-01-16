@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.10)
-project(BluetoothClient VERSION 1.1.2)
+project(BluetoothClient VERSION 1.1.3)
 
 set(CMAKE_CXX_STANDARD 17)
 set(TARGET BluetoothClient)

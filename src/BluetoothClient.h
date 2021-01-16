@@ -18,7 +18,7 @@ DEFINE_GUID(g_insecureBluetoothClientChat, 0x8ce255c0, 0x200a, 0x11e0, 0xac, 0x6
 class BluetoothClient final : public Component
 {
 public:
-	const char *Version = u8"1.1.2";
+	const char *Version = u8"1.1.3";
 	BluetoothClient();
 	~BluetoothClient();
 private:
@@ -38,7 +38,7 @@ private:
 	variant_t Read();
 	variant_t Opened();
 	void Close();
-	SOCKET localSocket = NULL;
+	SOCKET localSocket = INVALID_SOCKET;
 	ULONG NameToBluetoothAddress(const wstring deviceName, PSOCKADDR_BTH pRemoteBtAddr);
 	string GetWsaErrorMessage();
 	char CalculateLrc(string message);
