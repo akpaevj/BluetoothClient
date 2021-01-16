@@ -192,7 +192,7 @@ variant_t BluetoothClient::Read()
                     SendAck();
                     AddDebugMessage("INFO: ACK message sent");
 
-                    return message.substr(message.length() - 1);
+                    return message;
                 }
                 else {
                     AddDebugMessage("WARNING: calculated LRC differs from received one. It'll send NAK symbol and read the message again");  
