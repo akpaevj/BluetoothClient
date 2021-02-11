@@ -1,0 +1,3 @@
+C:/Users/akpaev.e.ENTERPRISE/Desktop/BluetoothClient/cmake-build-debug/CMakeFiles/BluetoothClient.dir
+C:/Users/akpaev.e.ENTERPRISE/Desktop/BluetoothClient/cmake-build-debug/CMakeFiles/edit_cache.dir
+C:/Users/akpaev.e.ENTERPRISE/Desktop/BluetoothClient/cmake-build-debug/CMakeFiles/rebuild_cache.dir

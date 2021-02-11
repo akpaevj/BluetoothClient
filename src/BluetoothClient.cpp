@@ -37,7 +37,7 @@ BluetoothClient::~BluetoothClient() {
 
 void BluetoothClient::Open(const variant_t deviceName)
 {
-    if (_opened) {
+    if (opened) {
         AddError(ADDIN_E_VERY_IMPORTANT, extensionName(), "Connection is already opened", true);
         return;
     }
@@ -58,7 +58,7 @@ void BluetoothClient::Open(const variant_t deviceName)
 
     if (NameToBluetoothAddress(wdeviceName, &RemoteBthAddr) != 0) {
         WSACleanup();
-        AddError(ADDIN_E_VERY_IMPORTANT, extensionName(), "Не удалось получить адрес или устройство недоступно (" + sdeviceName + ")", true);
+        AddError(ADDIN_E_VERY_IMPORTANT, extensionName(), "Couldn't get an address or the device is not available (" + sdeviceName + ")", true);
         return;
     }
 
@@ -94,28 +94,47 @@ void BluetoothClient::Open(const variant_t deviceName)
         return;
     }
     else {
-        _opened = true;
+        opened = true;
     }
 }
 
 void BluetoothClient::Write(const variant_t message)
 {
-    if (!_opened) {
-        AddError(ADDIN_E_VERY_IMPORTANT, extensionName(), "You should open a connection before writing any data", true);
+    if (!opened) {
+        AddError(ADDIN_E_VERY_IMPORTANT, extensionName(), "ERROR: Writing: You should open a connection before writing any data", true);
         return;
     }
 
     auto msg = get<string>(message);
+    AddDebugMessage("INFO: Writing: Trying to write message that has length " + to_string(msg.length()));
     
     msg.push_back(ETX);
     auto lrc = CalculateLrc(msg);
+    AddDebugMessage("INFO: Writing: Calculated message LRC is " + to_string(lrc));
+
     msg.insert(0, 1, STX);
     msg += lrc;
 
     auto data = msg.c_str();
+    int len = msg.length();
+    int sent = 0;
 
-    if (SOCKET_ERROR == send(localSocket, data, msg.length(), 0)) {
-        AddError(ADDIN_E_FAIL, extensionName(), GetWsaErrorMessage(), true);
+    // Read the whole message in the loop
+    while (true) {
+        auto res = send(localSocket, data + sent, len - sent, 0);
+
+        if (SOCKET_ERROR == res) {
+            AddError(ADDIN_E_FAIL, extensionName(), GetWsaErrorMessage(), true);
+            break;
+        }
+
+        AddDebugMessage("INFO: Writing: Sent " + to_string(res) + " bytes");
+        
+        sent += res;
+
+        if (len <= sent) {
+            break;
+        }
     }
 }
 
@@ -137,53 +156,46 @@ void BluetoothClient::SendAck() {
 
 variant_t BluetoothClient::Read()
 {
-    if (!_opened) {
-        AddError(ADDIN_E_VERY_IMPORTANT, extensionName(), "You should open a connection before reading any data", true);
+    if (!opened) {
+        AddError(ADDIN_E_VERY_IMPORTANT, extensionName(), "ERROR: Reading: You should open a connection before reading any data", true);
         return "";
     }
 
     string message = "";
-    const int bLength = 1000;
+    const int bLength = 4096;
     char buffer[bLength];
-    int tries = 0;
     bool messageStarted = false;
     char calcLrc = 0;
 
     while (true) {
-        // For avoiding infinite loop stop it after 3 tries
-        if (tries == 3) {
-            AddError(ADDIN_E_FAIL, extensionName(), "Failed to get a message", true);
-            return message;
-        }
-
-        int len = recv(localSocket, buffer, bLength, 0);
+        int received = recv(localSocket, buffer, bLength, 0);
         
-        if (len == SOCKET_ERROR) {
+        if (received == SOCKET_ERROR) {
             AddError(ADDIN_E_FAIL, extensionName(), GetWsaErrorMessage(), true);
             break;
         }
-        else if (len == 0)
+        else if (received == 0)
             break;
 
-        AddDebugMessage("INFO: Received " + to_string(len) + " bytes");
+        AddDebugMessage("INFO: Reading: Received " + to_string(received) + " bytes");
 
         // First byte of the message MUST be a STX symbol. If everything is ok, continue reading the stream
         if (!messageStarted) {
             if (buffer[0] == STX) {
-                AddDebugMessage("INFO: Received STX symbol");
+                AddDebugMessage("INFO: Reading: Received STX symbol");
                 messageStarted = true;
             }
             else if (buffer[0] == NAK) {
-                AddError(ADDIN_E_FAIL, extensionName(), "Received NAK symbol, you should send the message again", true);
+                AddError(ADDIN_E_FAIL, extensionName(), "ERROR: Reading: Received NAK symbol, you should send the message again", true);
                 return "";
             }
             else {
-                AddError(ADDIN_E_FAIL, extensionName(), "The first byte of the stream is not a STX symbol", true);
+                AddError(ADDIN_E_FAIL, extensionName(), "ERROR: Reading: The first byte of the stream is not a STX symbol", true);
                 return message;
             }
         }
 
-        for (int i = 0; i < len; i++) {
+        for (int i = 0; i < received; i++) {
             auto c = buffer[i];
 
             // Calculate message checksum and push char to message string
@@ -195,25 +207,23 @@ variant_t BluetoothClient::Read()
             }
 
             if (c == ETX) {
-                AddDebugMessage("INFO: ETX symbol reached");
+                AddDebugMessage("INFO: Reading: ETX symbol reached");
 
                 auto receivedLrc = buffer[i + 1];
-                AddDebugMessage("INFO: Received message LRC is " + to_string(receivedLrc));
-                AddDebugMessage("INFO: Calculated message LRC is " + to_string(calcLrc));
+                AddDebugMessage("INFO: Reading: Received message LRC is " + to_string(receivedLrc));
+                AddDebugMessage("INFO: Reading: Calculated message LRC is " + to_string(calcLrc));
 
                 if (receivedLrc == calcLrc) {
-                    AddDebugMessage("INFO: Calculated LRC and received one are the same");
-                    // Send acknowledge and pass message to 1C
+                    AddDebugMessage("INFO: Reading: Calculated LRC and received one are the same");
                     SendAck();
-                    AddDebugMessage("INFO: ACK message sent");
+                    AddDebugMessage("INFO: Reading: ACK message sent");
 
                     return message;
                 }
                 else {
-                    AddDebugMessage("WARNING: calculated LRC differs from received one. It'll send NAK symbol and read the message again");  
+                    AddDebugMessage("WARNING: Reading: calculated LRC differs from received one. It'll send NAK symbol and read the message again");  
                     SendNak();
                     message.clear();
-                    tries++;
                     messageStarted = false;
                     calcLrc = 0;
 
@@ -223,7 +233,7 @@ variant_t BluetoothClient::Read()
         }
     }
 
-    AddError(ADDIN_E_FAIL, extensionName(), "Failed to get a message", true);
+    AddError(ADDIN_E_FAIL, extensionName(), "ERROR: Reading: Failed to get a message", true);
     return "";
 }
 
@@ -415,7 +425,8 @@ string BluetoothClient::GetWsaErrorMessage()
 
 char BluetoothClient::CalculateLrc(string message) {
     char LRC = 0;
-    for (int i = 0; i < message.length(); i++) {
+    int len = message.length();
+    for (int i = 0; i < len; i++) {
         LRC ^= message[i];
     }
     return LRC;
@@ -431,12 +442,12 @@ void BluetoothClient::AddDebugMessage(string message) {
 
 variant_t BluetoothClient::Opened() 
 {
-    return _opened;
+    return opened;
 }
 
 void BluetoothClient::Close()
 {
-    if (localSocket != INVALID_SOCKET && _opened) {
+    if (localSocket != INVALID_SOCKET && opened) {
         if (SOCKET_ERROR == closesocket(localSocket)) {
             auto err = GetWsaErrorMessage();
             WSACleanup();
@@ -448,7 +459,7 @@ void BluetoothClient::Close()
             localSocket = INVALID_SOCKET;
         }
 
-        _opened = false;
+        opened = false;
 
         AddDebugMessage("INFO: Disconnected");
     }

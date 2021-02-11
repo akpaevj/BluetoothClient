@@ -46,7 +46,7 @@ private:
 	void SendAck();
 	void AddDebugMessage(string message);
 
-	bool _opened = false;
+	bool opened = false;
 	std::shared_ptr<variant_t> timeoutProperty;
 	std::shared_ptr<variant_t> debugMode;
 
