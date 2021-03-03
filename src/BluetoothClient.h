@@ -18,7 +18,7 @@ DEFINE_GUID(g_insecureBluetoothClientChat, 0x8ce255c0, 0x200a, 0x11e0, 0xac, 0x6
 class BluetoothClient final : public Component
 {
 public:
-	const char *Version = u8"1.1.4";
+	const char *Version = u8"1.2.0";
 	BluetoothClient();
 	~BluetoothClient();
 private:
@@ -34,8 +34,8 @@ private:
 
 	std::string extensionName() override;
 	void Open(const variant_t deviceName);
-	void Write(const variant_t message);
-	variant_t Read();
+	void Write(const variant_t message, const variant_t timeout);
+	variant_t Read(const variant_t timeout);
 	variant_t Opened();
 	void Close();
 	SOCKET localSocket = INVALID_SOCKET;
@@ -47,7 +47,6 @@ private:
 	void AddDebugMessage(string message);
 
 	bool opened = false;
-	std::shared_ptr<variant_t> timeoutProperty;
 	std::shared_ptr<variant_t> debugMode;
 
 	BluetoothClient operator=(const BluetoothClient&) = delete;

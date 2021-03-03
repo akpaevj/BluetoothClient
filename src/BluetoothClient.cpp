@@ -12,10 +12,6 @@ std::string BluetoothClient::extensionName() {
 }
 
 BluetoothClient::BluetoothClient(){
-
-    timeoutProperty = make_shared<variant_t>(0);
-    AddProperty(L"Timeout", L"Таймаут", timeoutProperty);
-
     AddProperty(L"Version", L"ВерсияКомпоненты", [&]() {
         auto s = std::string(Version);
         return std::make_shared<variant_t>(std::move(s));
@@ -25,9 +21,9 @@ BluetoothClient::BluetoothClient(){
     AddProperty(L"DebugMode", L"РежимОтладки", debugMode);
 
     AddMethod(L"Open", L"Открыть", this, &BluetoothClient::Open);
-    AddMethod(L"Write", L"Записать", this, &BluetoothClient::Write);
+    AddMethod(L"Write", L"Записать", this, &BluetoothClient::Write, {{1, 10}});
     AddMethod(L"Opened", L"Открыто", this, &BluetoothClient::Opened);
-    AddMethod(L"Read", L"Прочитать", this, &BluetoothClient::Read);
+    AddMethod(L"Read", L"Прочитать", this, &BluetoothClient::Read, {{0, 10}});
     AddMethod(L"Close", L"Закрыть", this, &BluetoothClient::Close);
 }
 
@@ -64,16 +60,6 @@ void BluetoothClient::Open(const variant_t deviceName)
 
     localSocket = socket(AF_BTH, SOCK_STREAM, BTHPROTO_RFCOMM);
 
-    auto t_val = get<int>(*timeoutProperty);
-    AddDebugMessage("INFO: Timeout is " + to_string(t_val));
-
-    int timeoutValMs = t_val * 1000;
-
-    if (timeoutValMs > 0) {
-        setsockopt(localSocket, SOL_SOCKET, SO_RCVTIMEO, (const char*)&timeoutValMs, sizeof(timeoutValMs));
-        setsockopt(localSocket, SOL_SOCKET, SO_SNDTIMEO, (const char*)&timeoutValMs, sizeof(timeoutValMs));
-    }
-
     if (INVALID_SOCKET == localSocket) {
         auto err = GetWsaErrorMessage();
         WSACleanup();
@@ -98,7 +84,7 @@ void BluetoothClient::Open(const variant_t deviceName)
     }
 }
 
-void BluetoothClient::Write(const variant_t message)
+void BluetoothClient::Write(const variant_t message, const variant_t timeout)
 {
     if (!opened) {
         AddError(ADDIN_E_VERY_IMPORTANT, extensionName(), "ERROR: Writing: You should open a connection before writing any data", true);
@@ -119,8 +105,27 @@ void BluetoothClient::Write(const variant_t message)
     int len = msg.length();
     int sent = 0;
 
+    struct timeval tv;
+    tv.tv_sec = get<int>(timeout);
+    tv.tv_usec = 0;
+
     // Read the whole message in the loop
     while (true) {
+        fd_set wfds;
+        FD_ZERO(&wfds);
+        FD_SET(localSocket, &wfds);
+
+        auto retVal = select(localSocket + 1, NULL, &wfds, NULL, &tv);
+
+        if (retVal == SOCKET_ERROR) {
+            AddError(ADDIN_E_FAIL, extensionName(), GetWsaErrorMessage(), true);
+            break;
+        }
+        else if (retVal == 0) {
+            AddError(ADDIN_E_FAIL, extensionName(), "ERROR: Writing: Timeout expired", true);
+            break;
+        }
+
         auto res = send(localSocket, data + sent, len - sent, 0);
 
         if (SOCKET_ERROR == res) {
@@ -154,7 +159,7 @@ void BluetoothClient::SendAck() {
     }
 }
 
-variant_t BluetoothClient::Read()
+variant_t BluetoothClient::Read(const variant_t timeout)
 {
     if (!opened) {
         AddError(ADDIN_E_VERY_IMPORTANT, extensionName(), "ERROR: Reading: You should open a connection before reading any data", true);
@@ -167,7 +172,26 @@ variant_t BluetoothClient::Read()
     bool messageStarted = false;
     char calcLrc = 0;
 
+    struct timeval tv;
+    tv.tv_sec = get<int>(timeout);
+    tv.tv_usec = 0;
+
     while (true) {
+        fd_set rfds;
+        FD_ZERO(&rfds);
+        FD_SET(localSocket, &rfds);
+
+        auto retVal = select(localSocket + 1, &rfds, NULL, NULL, &tv);
+
+        if (retVal == SOCKET_ERROR) {
+            AddError(ADDIN_E_FAIL, extensionName(), GetWsaErrorMessage(), true);
+            break;
+        }
+        else if (retVal == 0) {
+            AddError(ADDIN_E_FAIL, extensionName(), "ERROR: Reading: Timeout expired", true);
+            break;
+        }
+
         int received = recv(localSocket, buffer, bLength, 0);
         
         if (received == SOCKET_ERROR) {
